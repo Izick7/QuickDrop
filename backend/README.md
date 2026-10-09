@@ -1,8 +1,8 @@
-# QuikDrop Backend (Stage 1 — Database)
+# QuikDrop Backend (Stage 2 — Auth & Users)
 
-Node.js + Express + PostgreSQL + Sequelize (CLI) backend for the QuikDrop delivery
-platform. This stage contains **database schema only**: migrations, models, and
-seeders. No routes, controllers, or auth logic yet.
+Node.js + Express (v5) + PostgreSQL + Sequelize backend for the QuikDrop delivery
+platform. Stage 1 delivered the database schema; Stage 2 adds the HTTP layer:
+application bootstrap, authentication (JWT), and the user self-service endpoints.
 
 ## Setup
 
@@ -11,12 +11,52 @@ cp .env.example .env   # then edit credentials
 npm install
 npm run db:reset       # undo all → migrate → seed
 npm run db:check       # connect + row counts + association query
+npm run dev            # start the API with nodemon (or `npm start`)
+node scripts/smoke-auth.js   # end-to-end auth smoke test (server must be running)
 ```
 
 `.env` is git-ignored. Only `.env.example` is committed.
 
 Production uses a single `DATABASE_URL` connection string with SSL enabled; see
 `config/config.js` (production block).
+
+## Environment variables
+
+| Variable              | Default       | Description                                                                    |
+| --------------------- | ------------- | ------------------------------------------------------------------------------ |
+| `NODE_ENV`            | `development` | `production` enables `DATABASE_URL` SSL and the startup safety guards.         |
+| `PORT`                | `5000`        | HTTP port.                                                                     |
+| `JWT_SECRET`          | — (required)  | Token signing secret. Must be ≥ 32 chars when `NODE_ENV=production`.           |
+| `JWT_EXPIRES_IN`      | `1d`          | JWT lifetime (jsonwebtoken syntax).                                            |
+| `BCRYPT_ROUNDS`       | `10`          | bcrypt cost factor.                                                            |
+| `AUTH_RATE_LIMIT_MAX` | `100`         | Max register/login requests per 15-minute window, per IP.                      |
+| `CORS_ORIGIN`         | `*`           | Allowed origin. `*` is rejected at startup when `NODE_ENV=production`.         |
+| `TRUST_PROXY`         | off           | When set, passed to `app.set('trust proxy', …)` (`true`, a hop count, or string). |
+| `BASE_PRICE`          | `200`         | Reserved for pricing (later stages).                                           |
+| `PRICE_PER_KG`        | `50`          | Reserved for pricing (later stages).                                           |
+
+### Startup guards
+
+When `NODE_ENV=production` the process refuses to boot if `JWT_SECRET` is shorter
+than 32 characters or if `CORS_ORIGIN` is `*`.
+
+## API endpoints (Stage 2)
+
+All routes are mounted under `/api` and use the envelope
+`{ success: true, data }` / `{ success: false, message, errors? }`.
+
+| Method  | Path                       | Auth   | Description                                                       |
+| ------- | -------------------------- | ------ | ----------------------------------------------------------------- |
+| `GET`   | `/api/health`              | none   | Liveness probe.                                                    |
+| `POST`  | `/api/auth/register`       | none   | Create a `CUSTOMER` (default) or `RIDER`. `ADMIN` is rejected.     |
+| `POST`  | `/api/auth/login`          | none   | Exchange credentials for a JWT.                                    |
+| `GET`   | `/api/auth/me`             | Bearer | Current user (includes `riderProfile` for riders).                 |
+| `PATCH` | `/api/users/me`            | Bearer | Update `fullName`/`phone`; riders also `vehicleType`/`plateNumber`.|
+| `PATCH` | `/api/users/me/password`   | Bearer | Change password (requires `currentPassword`).                      |
+
+Registering a rider creates the user **and** their `rider_profiles` row
+(availability `OFFLINE`) in a single transaction. Responses never include
+`passwordHash`.
 
 ## Seeded accounts
 
@@ -39,7 +79,7 @@ delivery status history. All seeders are reversible (`npm run db:seed:undo`).
 
 | Script                   | Description                                                    |
 | ------------------------ | -------------------------------------------------------------- |
-| `npm start`              | Run the app entrypoint (`node index.js`).                      |
+| `npm start`              | Run the app entrypoint (`node src/server.js`).                 |
 | `npm run dev`            | Run with nodemon (auto-restart).                              |
 | `npm run db:create`      | Create the database from config.                              |
 | `npm run db:drop`        | Drop the database.                                             |
