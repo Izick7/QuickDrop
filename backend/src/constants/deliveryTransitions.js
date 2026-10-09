@@ -25,9 +25,21 @@ const DELIVERY_TRANSITIONS = {
 
 const TERMINAL_STATUSES = ['DELIVERED', 'CANCELLED'];
 
-function canTransition(fromStatus, toStatus) {
+// Extra transitions only an ADMIN may perform (e.g. aborting a delivery that a
+// customer or rider has already pushed past the point of no return).
+const ADMIN_EXTRA_TRANSITIONS = {
+  PICKED_UP: ['CANCELLED'],
+  IN_TRANSIT: ['CANCELLED'],
+};
+
+function canTransition(fromStatus, toStatus, { allowAdminOverride = false } = {}) {
   const allowed = DELIVERY_TRANSITIONS[fromStatus] || [];
-  return allowed.includes(toStatus);
+  if (allowed.includes(toStatus)) return true;
+  if (allowAdminOverride) {
+    const adminAllowed = ADMIN_EXTRA_TRANSITIONS[fromStatus] || [];
+    return adminAllowed.includes(toStatus);
+  }
+  return false;
 }
 
 function isTerminal(status) {
@@ -35,11 +47,11 @@ function isTerminal(status) {
 }
 
 // Throws a 409 AppError when the transition is not allowed (or from a terminal state).
-function assertTransition(fromStatus, toStatus) {
+function assertTransition(fromStatus, toStatus, options = {}) {
   if (!DELIVERY_TRANSITIONS[fromStatus]) {
     throw new AppError(`Unknown delivery status: ${fromStatus}`, 409);
   }
-  if (!canTransition(fromStatus, toStatus)) {
+  if (!canTransition(fromStatus, toStatus, options)) {
     if (isTerminal(fromStatus)) {
       throw new AppError(
         `Delivery is ${fromStatus} and can no longer be changed`,
@@ -56,6 +68,7 @@ function assertTransition(fromStatus, toStatus) {
 module.exports = {
   DELIVERY_STATUS,
   DELIVERY_TRANSITIONS,
+  ADMIN_EXTRA_TRANSITIONS,
   TERMINAL_STATUSES,
   canTransition,
   isTerminal,

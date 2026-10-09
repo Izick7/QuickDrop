@@ -71,7 +71,7 @@ async function createPayment(customer, deliveryId, method) {
       await transitionDelivery({
         deliveryId,
         toStatus: 'CONFIRMED',
-        actor: { id: customer.id },
+        actor: { id: customer.id, role: customer.role },
         note: 'auto-confirmed on payment',
         transaction,
       });

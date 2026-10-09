@@ -34,6 +34,51 @@ const { calculatePrice } = require('./pricingService');
 
 const ACTIVE = ACTIVE_DELIVERY_STATUSES;
 
+/**
+ * A rider may be assigned a delivery only when the underlying account is an
+ * ACTIVE rider, their profile is AVAILABLE, and they have no other active
+ * delivery. The profile row is locked so two concurrent assignments to the
+ * same rider cannot both pass this check.
+ *
+ * Lock order here is: DELIVERY -> USER (SHARE) -> RIDER PROFILE. The user row is
+ * taken with SHARE (not UPDATE) so it never conflicts with the UPDATE locks
+ * adminReassign takes on the same users, which would invert the global order.
+ */
+async function assertRiderEligible(riderId, transaction) {
+  const rider = await User.findByPk(riderId, {
+    lock: transaction.LOCK.SHARE,
+    transaction,
+  });
+  if (!rider || rider.role !== 'RIDER') {
+    throw new AppError('Rider not found', 404);
+  }
+  if (rider.status !== 'ACTIVE') {
+    throw new AppError('Rider account is not active', 409);
+  }
+
+  const profile = await RiderProfile.findOne({
+    where: { userId: riderId },
+    lock: transaction.LOCK.UPDATE,
+    transaction,
+  });
+  if (!profile) {
+    throw new AppError('Rider profile not found', 404);
+  }
+  if (profile.availability !== 'AVAILABLE') {
+    throw new AppError('Rider is not available', 409);
+  }
+
+  const activeCount = await Delivery.count({
+    where: { riderId, status: { [Op.in]: ACTIVE } },
+    transaction,
+  });
+  if (activeCount > 0) {
+    throw new AppError('Rider already has an active delivery', 409);
+  }
+
+  return profile;
+}
+
 // Fields a customer may edit while the delivery is still PENDING.
 const EDITABLE_FIELDS = [
   'pickupAddress',
@@ -124,7 +169,9 @@ async function runTransition(params, transaction) {
   }
 
   const fromStatus = delivery.status;
-  assertTransition(fromStatus, toStatus);
+  assertTransition(fromStatus, toStatus, {
+    allowAdminOverride: Boolean(actor && actor.role === 'ADMIN'),
+  });
 
   const now = new Date();
   const fields = { status: toStatus };
@@ -145,6 +192,10 @@ async function runTransition(params, transaction) {
     if (!riderIdForEffects) {
       throw new AppError('riderId is required to assign a delivery', 500);
     }
+    // Every assignment path (riderAccept, adminAssign, adminReassign) must
+    // satisfy the same eligibility rules; the lock is re-entrant within this
+    // transaction so a prior check by the caller is harmless.
+    await assertRiderEligible(riderIdForEffects, transaction);
   } else if (ACTIVE.includes(fromStatus) && !ACTIVE.includes(toStatus)) {
     riderIdForEffects = delivery.riderId;
   }
@@ -336,7 +387,7 @@ async function customerCancel(customer, deliveryId, reason) {
     await transitionDelivery({
       deliveryId,
       toStatus: 'CANCELLED',
-      actor: { id: customer.id },
+      actor: { id: customer.id, role: customer.role },
       note: reason,
       patch: { cancelledReason: reason },
       transaction,
@@ -352,19 +403,46 @@ async function customerCancel(customer, deliveryId, reason) {
  * of who triggers the change.
  * ------------------------------------------------------------------ */
 async function adminConfirm(deliveryId, actor, note) {
-  await transitionDelivery({
-    deliveryId,
-    toStatus: 'CONFIRMED',
-    actor,
-    note: note || 'Confirmed by admin',
+  await sequelize.transaction(async (transaction) => {
+    const delivery = await Delivery.findByPk(deliveryId, {
+      lock: transaction.LOCK.UPDATE,
+      transaction,
+    });
+    if (!delivery) {
+      throw new AppError('Delivery not found', 404);
+    }
+
+    // Dispatch may only confirm a delivery once money is accounted for: either
+    // a captured payment or a cash amount that will settle on delivery.
+    const payment = await Payment.findOne({
+      where: {
+        deliveryId,
+        [Op.or]: [
+          { status: 'SUCCESSFUL' },
+          { status: 'PENDING', method: 'CASH' },
+        ],
+      },
+      transaction,
+    });
+    if (!payment) {
+      throw new AppError('No payment recorded for this delivery', 409);
+    }
+
+    await transitionDelivery({
+      deliveryId,
+      toStatus: 'CONFIRMED',
+      actor,
+      note: note || 'Confirmed by admin',
+      transaction,
+    });
   });
+
   return loadDeliveryDetail(deliveryId);
 }
 
 async function adminAssign(deliveryId, riderId, actor, note) {
   await sequelize.transaction(async (transaction) => {
-    const delivery = await Delivery.findOne({
-      where: { id: deliveryId },
+    const delivery = await Delivery.findByPk(deliveryId, {
       lock: transaction.LOCK.UPDATE,
       transaction,
     });
@@ -375,33 +453,7 @@ async function adminAssign(deliveryId, riderId, actor, note) {
       throw new AppError('Delivery is not available for assignment', 409);
     }
 
-    const rider = await User.findByPk(riderId, { transaction });
-    if (!rider || rider.role !== 'RIDER') {
-      throw new AppError('Rider not found', 404);
-    }
-    if (rider.status !== 'ACTIVE') {
-      throw new AppError('Rider account is not active', 409);
-    }
-
-    const profile = await RiderProfile.findOne({
-      where: { userId: riderId },
-      lock: transaction.LOCK.UPDATE,
-      transaction,
-    });
-    if (!profile) {
-      throw new AppError('Rider profile not found', 404);
-    }
-    if (profile.availability !== 'AVAILABLE') {
-      throw new AppError('Rider is not available', 409);
-    }
-
-    const activeCount = await Delivery.count({
-      where: { riderId, status: { [Op.in]: ACTIVE } },
-      transaction,
-    });
-    if (activeCount > 0) {
-      throw new AppError('Rider already has an active delivery', 409);
-    }
+    await assertRiderEligible(riderId, transaction);
 
     await transitionDelivery({
       deliveryId,
@@ -409,6 +461,75 @@ async function adminAssign(deliveryId, riderId, actor, note) {
       actor,
       note: note || 'Assigned by admin',
       patch: { riderId },
+      transaction,
+    });
+  });
+
+  return loadDeliveryDetail(deliveryId);
+}
+
+/**
+ * Moves an ASSIGNED delivery from one rider to another in a single
+ * transaction. Both rider profiles are locked in ascending userId order so
+ * two simultaneous reassignments cannot deadlock.
+ */
+async function adminReassign(deliveryId, newRiderId, actor, note) {
+  await sequelize.transaction(async (transaction) => {
+    const delivery = await Delivery.findByPk(deliveryId, {
+      lock: transaction.LOCK.UPDATE,
+      transaction,
+    });
+    if (!delivery) {
+      throw new AppError('Delivery not found', 404);
+    }
+    if (delivery.status !== 'ASSIGNED') {
+      throw new AppError('Only an ASSIGNED delivery can be reassigned', 409);
+    }
+
+    const oldRiderId = delivery.riderId;
+    if (!oldRiderId) {
+      throw new AppError('Delivery has no rider to reassign from', 409);
+    }
+    if (newRiderId === oldRiderId) {
+      throw new AppError('Rider is already assigned to this delivery', 409);
+    }
+
+    // Lock both profiles in a deterministic order (ascending userId).
+    const orderedIds = [oldRiderId, newRiderId].sort();
+    const lockedProfiles = {};
+    for (const userId of orderedIds) {
+      const profile = await RiderProfile.findOne({
+        where: { userId },
+        lock: transaction.LOCK.UPDATE,
+        transaction,
+      });
+      if (profile) lockedProfiles[userId] = profile;
+    }
+
+    // The outgoing rider is freed (unless they parked themselves OFFLINE).
+    const oldProfile = lockedProfiles[oldRiderId];
+    if (oldProfile && oldProfile.availability !== 'OFFLINE') {
+      oldProfile.availability = 'AVAILABLE';
+      await oldProfile.save({ transaction });
+    }
+
+    // Validate the incoming rider before anything is written.
+    await assertRiderEligible(newRiderId, transaction);
+
+    // Two history rows: ASSIGNED -> CONFIRMED (detach) then CONFIRMED -> ASSIGNED.
+    await transitionDelivery({
+      deliveryId,
+      toStatus: 'CONFIRMED',
+      actor,
+      note: note || 'Reassigned by admin',
+      transaction,
+    });
+    await transitionDelivery({
+      deliveryId,
+      toStatus: 'ASSIGNED',
+      actor,
+      note: note || 'Reassigned by admin',
+      patch: { riderId: newRiderId },
       transaction,
     });
   });
@@ -439,6 +560,7 @@ async function adminCancel(deliveryId, actor, reason, note) {
 
 module.exports = {
   transitionDelivery,
+  assertRiderEligible,
   serializeDelivery,
   createDelivery,
   updateDelivery,
@@ -449,4 +571,5 @@ module.exports = {
   adminAssign,
   adminUnassign,
   adminCancel,
+  adminReassign,
 };

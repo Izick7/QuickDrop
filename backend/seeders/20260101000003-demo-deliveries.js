@@ -3,14 +3,14 @@
 const { Op } = require('sequelize');
 
 const DELIVERY_IDS = [
-  '55555555-5555-4555-8555-555555555501',
-  '55555555-5555-4555-8555-555555555502',
-  '55555555-5555-4555-8555-555555555503',
-  '55555555-5555-4555-8555-555555555504',
-  '55555555-5555-4555-8555-555555555505',
-  '55555555-5555-4555-8555-555555555506',
-  '55555555-5555-4555-8555-555555555507',
-  '55555555-5555-4555-8555-555555555508',
+  '55555555-5555-4555-8555-555555555501', // D1 PENDING
+  '55555555-5555-4555-8555-555555555502', // D2 CONFIRMED
+  '55555555-5555-4555-8555-555555555503', // D3 ASSIGNED
+  '55555555-5555-4555-8555-555555555504', // D4 PICKED_UP
+  '55555555-5555-4555-8555-555555555505', // D5 IN_TRANSIT
+  '55555555-5555-4555-8555-555555555506', // D6 DELIVERED
+  '55555555-5555-4555-8555-555555555507', // D7 DELIVERED
+  '55555555-5555-4555-8555-555555555508', // D8 CANCELLED
 ];
 
 const CUST = {
@@ -22,6 +22,7 @@ const CUST = {
 const RIDER = {
   r1: '33333333-3333-4333-8333-333333333331',
   r2: '33333333-3333-4333-8333-333333333332',
+  r4: '33333333-3333-4333-8333-333333333334',
 };
 
 const hoursAgo = (h) => new Date(Date.now() - h * 60 * 60 * 1000);
@@ -42,7 +43,7 @@ module.exports = {
         packageDescription: 'Small envelope with documents',
         packageWeightKg: 0.5,
         notes: 'Fragile, handle with care',
-        price: 350.0,
+        price: 225.0,
         status: 'PENDING',
         cancelledReason: null,
         assignedAt: null,
@@ -65,7 +66,7 @@ module.exports = {
         packageDescription: 'Box of electronics accessories',
         packageWeightKg: 2.4,
         notes: null,
-        price: 720.5,
+        price: 320.0,
         status: 'CONFIRMED',
         cancelledReason: null,
         assignedAt: null,
@@ -88,7 +89,7 @@ module.exports = {
         packageDescription: 'Two wrapped gift boxes',
         packageWeightKg: 1.2,
         notes: 'Call on arrival',
-        price: 480.0,
+        price: 260.0,
         status: 'ASSIGNED',
         cancelledReason: null,
         assignedAt: hoursAgo(3),
@@ -111,7 +112,7 @@ module.exports = {
         packageDescription: 'Medium suitcase',
         packageWeightKg: 8.0,
         notes: null,
-        price: 1250.0,
+        price: 600.0,
         status: 'PICKED_UP',
         cancelledReason: null,
         assignedAt: hoursAgo(4),
@@ -124,7 +125,7 @@ module.exports = {
       {
         id: DELIVERY_IDS[4],
         customerId: CUST.c2,
-        riderId: RIDER.r1,
+        riderId: RIDER.r4,
         pickupAddress: '88 Kenyatta Avenue, Nairobi',
         pickupContactName: 'Chris Customer',
         pickupContactPhone: '+254700000003',
@@ -134,7 +135,7 @@ module.exports = {
         packageDescription: 'Food takeaway order',
         packageWeightKg: 3.1,
         notes: 'Keep upright',
-        price: 560.0,
+        price: 355.0,
         status: 'IN_TRANSIT',
         cancelledReason: null,
         assignedAt: hoursAgo(3),
@@ -157,7 +158,7 @@ module.exports = {
         packageDescription: 'Laptop repair kit',
         packageWeightKg: 1.8,
         notes: null,
-        price: 900.0,
+        price: 290.0,
         status: 'DELIVERED',
         cancelledReason: null,
         assignedAt: hoursAgo(30),
@@ -180,7 +181,7 @@ module.exports = {
         packageDescription: 'Bundle of office stationery',
         packageWeightKg: 4.5,
         notes: 'Leave with security if away',
-        price: 640.0,
+        price: 425.0,
         status: 'DELIVERED',
         cancelledReason: null,
         assignedAt: hoursAgo(52),
@@ -203,7 +204,7 @@ module.exports = {
         packageDescription: 'Bag of clothing',
         packageWeightKg: 6.2,
         notes: null,
-        price: 800.0,
+        price: 510.0,
         status: 'CANCELLED',
         cancelledReason: 'Customer cancelled before pickup',
         assignedAt: null,

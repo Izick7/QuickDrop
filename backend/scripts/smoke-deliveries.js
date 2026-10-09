@@ -25,6 +25,10 @@ const {
 } = require('../src/config/database');
 const deliveryService = require('../src/services/deliveryService');
 const { ACTIVE_DELIVERY_STATUSES } = require('../src/constants/enums');
+const {
+  DELIVERY_TRANSITIONS,
+  ADMIN_EXTRA_TRANSITIONS,
+} = require('../src/constants/deliveryTransitions');
 
 const BASE_URL =
   process.env.SMOKE_BASE_URL ||
@@ -48,7 +52,6 @@ const SEED = {
 let passed = 0;
 let failed = 0;
 let passwordHashLeak = null;
-const testRiderIds = new Set();
 
 function record(name, ok, detail) {
   if (ok) {
@@ -175,56 +178,112 @@ async function setAvailable(token) {
 
 /* ------------------------------------------------------------------ *
  * Invariant sweep (Sequelize, directly against the DB)
+ *
+ * These rules must hold for EVERY delivery and EVERY rider, seeded or not:
+ *   - an active delivery is always assigned to a rider;
+ *   - non-active deliveries have no rider (DELIVERED keeps a riderId by
+ *     design — the rider is simply freed);
+ *   - no rider has more than one active delivery, and a rider's profile is
+ *     BUSY iff they have exactly one;
+ *   - every DELIVERED delivery has a SUCCESSFUL payment;
+ *   - every CANCELLED delivery has only REFUNDED / FAILED payments;
+ *   - a delivery's status history is one uninterrupted chain that ends at its
+ *     current status with every step a legal transition.
  * ------------------------------------------------------------------ */
 async function checkInvariants(label) {
   const violations = [];
 
-  const active = await Delivery.findAll({
-    where: { status: { [Op.in]: ACTIVE_DELIVERY_STATUSES } },
+  const allDeliveries = await Delivery.findAll({
+    order: [['createdAt', 'ASC']],
   });
-  const cancelled = await Delivery.findAll({ where: { status: 'CANCELLED' } });
-  const earlyWithRider = await Delivery.findAll({
-    where: {
-      status: { [Op.in]: ['PENDING', 'CONFIRMED'] },
-      riderId: { [Op.ne]: null },
-    },
-  });
-  const busyProfiles = await RiderProfile.findAll({
-    where: { availability: 'BUSY' },
-  });
+  const allProfiles = await RiderProfile.findAll();
 
-  for (const d of active) {
-    if (!d.riderId) violations.push(`active delivery ${d.id} has no rider`);
-  }
-  for (const d of cancelled) {
-    if (d.riderId) violations.push(`cancelled delivery ${d.id} still has rider`);
-  }
-  for (const d of earlyWithRider) {
-    violations.push(`${d.status} delivery ${d.id} already has a rider`);
-  }
-  for (const p of busyProfiles) {
-    const count = await Delivery.count({
-      where: { riderId: p.userId, status: { [Op.in]: ACTIVE_DELIVERY_STATUSES } },
+  for (const d of allDeliveries) {
+    if (ACTIVE_DELIVERY_STATUSES.includes(d.status)) {
+      if (!d.riderId) violations.push(`active delivery ${d.id} has no rider`);
+    } else if (d.riderId && d.status !== 'DELIVERED') {
+      violations.push(`${d.status} delivery ${d.id} still has a rider`);
+    }
+
+    if (d.status === 'DELIVERED') {
+      const paid = await Payment.count({
+        where: { deliveryId: d.id, status: 'SUCCESSFUL' },
+      });
+      if (paid === 0) {
+        violations.push(`delivered delivery ${d.id} has no successful payment`);
+      }
+    }
+    if (d.status === 'CANCELLED') {
+      const outstanding = await Payment.count({
+        where: {
+          deliveryId: d.id,
+          status: { [Op.notIn]: ['REFUNDED', 'FAILED'] },
+        },
+      });
+      if (outstanding > 0) {
+        violations.push(
+          `cancelled delivery ${d.id} has payments that were not refunded/failed`
+        );
+      }
+    }
+
+    const history = await DeliveryStatusHistory.findAll({
+      where: { deliveryId: d.id },
+      order: [['createdAt', 'ASC']],
     });
-    if (count === 0) {
-      violations.push(`BUSY rider ${p.userId} has no active delivery`);
+    if (history.length === 0) {
+      violations.push(`delivery ${d.id} has no status history`);
+      continue;
+    }
+    if (history[history.length - 1].toStatus !== d.status) {
+      violations.push(
+        `delivery ${d.id} history ends at ${history[history.length - 1].toStatus} but status is ${d.status}`
+      );
+    }
+    let expectedFrom = null;
+    for (const entry of history) {
+      if (entry.fromStatus !== expectedFrom) {
+        violations.push(
+          `delivery ${d.id} history chain broken around ${entry.fromStatus} -> ${entry.toStatus}`
+        );
+        break;
+      }
+      if (entry.fromStatus !== null) {
+        const allowed = [
+          ...(DELIVERY_TRANSITIONS[entry.fromStatus] || []),
+          ...(ADMIN_EXTRA_TRANSITIONS[entry.fromStatus] || []),
+        ];
+        if (!allowed.includes(entry.toStatus)) {
+          violations.push(
+            `delivery ${d.id} history has invalid transition ${entry.fromStatus} -> ${entry.toStatus}`
+          );
+          break;
+        }
+      }
+      expectedFrom = entry.toStatus;
     }
   }
-  // Stricter, per-test-rider rules (the demo seed is intentionally loose).
-  for (const riderId of testRiderIds) {
-    const profile = await RiderProfile.findOne({ where: { userId: riderId } });
+
+  for (const profile of allProfiles) {
     const count = await Delivery.count({
-      where: { riderId, status: { [Op.in]: ACTIVE_DELIVERY_STATUSES } },
+      where: {
+        riderId: profile.userId,
+        status: { [Op.in]: ACTIVE_DELIVERY_STATUSES },
+      },
     });
     if (count > 1) {
-      violations.push(`test rider ${riderId} has ${count} active deliveries`);
-    }
-    if (profile && profile.availability === 'BUSY' && count === 0) {
-      violations.push(`test rider ${riderId} is BUSY with no active delivery`);
-    }
-    if (profile && count > 0 && profile.availability !== 'BUSY') {
       violations.push(
-        `test rider ${riderId} has active work but is ${profile.availability}`
+        `rider ${profile.userId} has ${count} active deliveries`
+      );
+    }
+    if (profile.availability === 'BUSY' && count !== 1) {
+      violations.push(
+        `BUSY rider ${profile.userId} does not have exactly one active delivery`
+      );
+    }
+    if (count > 0 && profile.availability !== 'BUSY') {
+      violations.push(
+        `rider ${profile.userId} has active work but is ${profile.availability}`
       );
     }
   }
@@ -267,8 +326,7 @@ async function main() {
     riderRace,
     riderAvail,
     riderDouble,
-  ];
-  for (const r of riders) testRiderIds.add((await request('GET', '/api/auth/me', { token: r.token })).json.data.user.id);
+  ]
   record('registered 8 fresh riders', riders.every((r) => Boolean(r.token)));
 
   await checkInvariants('baseline');
@@ -625,8 +683,8 @@ async function main() {
     await request('GET', '/api/auth/me', { token: riderQ.token })
   ).json.data.user.id;
   results = await Promise.allSettled([
-    deliveryService.adminAssign(assignRaceId, riderPId, { id: SEED.adminId }),
-    deliveryService.adminAssign(assignRaceId, riderQId, { id: SEED.adminId }),
+    deliveryService.adminAssign(assignRaceId, riderPId, { id: SEED.adminId, role: 'ADMIN' }),
+    deliveryService.adminAssign(assignRaceId, riderQId, { id: SEED.adminId, role: 'ADMIN' }),
   ]);
   const adminAccept = await request('POST', `/api/rider/deliveries/${assignRaceId}/accept`, {
     token: riderP.token,
@@ -782,9 +840,9 @@ async function main() {
   const riderRaceId = (
     await request('GET', '/api/auth/me', { token: riderRace.token })
   ).json.data.user.id;
-  await deliveryService.adminAssign(reassignId, riderYId, { id: SEED.adminId });
-  await deliveryService.adminUnassign(reassignId, { id: SEED.adminId });
-  await deliveryService.adminAssign(reassignId, riderRaceId, { id: SEED.adminId });
+  await deliveryService.adminAssign(reassignId, riderYId, { id: SEED.adminId, role: 'ADMIN' });
+  await deliveryService.adminUnassign(reassignId, { id: SEED.adminId, role: 'ADMIN' });
+  await deliveryService.adminAssign(reassignId, riderRaceId, { id: SEED.adminId, role: 'ADMIN' });
   res = await request('PATCH', `/api/rider/deliveries/${reassignId}/status`, {
     token: riderY.token,
     body: { status: 'PICKED_UP' },

@@ -3,9 +3,11 @@
 const { Op } = require('sequelize');
 
 const PROFILE_IDS = [
-  '44444444-4444-4444-8444-444444444441',
-  '44444444-4444-4444-8444-444444444442',
-  '44444444-4444-4444-8444-444444444443',
+  '44444444-4444-4444-8444-444444444441', // Randy (BUSY)
+  '44444444-4444-4444-8444-444444444442', // Rita (BUSY)
+  '44444444-4444-4444-8444-444444444443', // Rex (OFFLINE, suspended)
+  '44444444-4444-4444-8444-444444444444', // Milo (BUSY)
+  '44444444-4444-4444-8444-444444444445', // Nadia (AVAILABLE)
 ];
 
 module.exports = {
@@ -18,7 +20,7 @@ module.exports = {
         userId: '33333333-3333-4333-8333-333333333331', // Randy Rider
         vehicleType: 'Motorcycle',
         plateNumber: 'KDA 123A',
-        availability: 'AVAILABLE',
+        availability: 'BUSY',
         createdAt: now,
         updatedAt: now,
       },
@@ -37,6 +39,24 @@ module.exports = {
         vehicleType: 'Car',
         plateNumber: 'KDB 456B',
         availability: 'OFFLINE',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: PROFILE_IDS[3],
+        userId: '33333333-3333-4333-8333-333333333334', // Milo Rider
+        vehicleType: 'Van',
+        plateNumber: 'KDC 789C',
+        availability: 'BUSY',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: PROFILE_IDS[4],
+        userId: '33333333-3333-4333-8333-333333333335', // Nadia Rider
+        vehicleType: 'Motorcycle',
+        plateNumber: 'KDD 321D',
+        availability: 'AVAILABLE',
         createdAt: now,
         updatedAt: now,
       },

@@ -7,12 +7,14 @@ const PASSWORD = 'Password123!';
 
 const USER_IDS = [
   '11111111-1111-4111-8111-111111111111', // admin
-  '22222222-2222-4222-8222-222222222221', // customer 1
-  '22222222-2222-4222-8222-222222222222', // customer 2
-  '22222222-2222-4222-8222-222222222223', // customer 3
-  '33333333-3333-4333-8333-333333333331', // rider 1
-  '33333333-3333-4333-8333-333333333332', // rider 2
-  '33333333-3333-4333-8333-333333333333', // rider 3 (suspended)
+  '22222222-2222-4222-8222-222222222221', // customer 1 (Carla)
+  '22222222-2222-4222-8222-222222222222', // customer 2 (Chris)
+  '22222222-2222-4222-8222-222222222223', // customer 3 (Cindy, INACTIVE)
+  '33333333-3333-4333-8333-333333333331', // rider 1 (Randy)
+  '33333333-3333-4333-8333-333333333332', // rider 2 (Rita)
+  '33333333-3333-4333-8333-333333333333', // rider 3 (Rex, SUSPENDED)
+  '33333333-3333-4333-8333-333333333334', // rider 4 (Milo)
+  '33333333-3333-4333-8333-333333333335', // rider 5 (Nadia)
 ];
 
 module.exports = {
@@ -95,6 +97,28 @@ module.exports = {
         passwordHash,
         role: 'RIDER',
         status: 'SUSPENDED',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: USER_IDS[7],
+        fullName: 'Milo Rider',
+        email: 'milo.rider@quikdrop.test',
+        phone: '+254700000008',
+        passwordHash,
+        role: 'RIDER',
+        status: 'ACTIVE',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: USER_IDS[8],
+        fullName: 'Nadia Rider',
+        email: 'nadia.rider@quikdrop.test',
+        phone: '+254700000009',
+        passwordHash,
+        role: 'RIDER',
+        status: 'ACTIVE',
         createdAt: now,
         updatedAt: now,
       },

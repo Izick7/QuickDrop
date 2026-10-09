@@ -11,7 +11,7 @@ const {
 const AppError = require('../utils/AppError');
 const { ACTIVE_DELIVERY_STATUSES } = require('../constants/enums');
 const { getPagination, buildPaginated } = require('../utils/pagination');
-const { transitionDelivery, serializeDelivery } = require('./deliveryService');
+const { transitionDelivery, serializeDelivery, assertRiderEligible } = require('./deliveryService');
 
 const ACTIVE = ACTIVE_DELIVERY_STATUSES;
 // Riders may only advance the delivery through these states; CANCELLED is
@@ -110,38 +110,14 @@ async function riderAccept(riderId, deliveryId) {
       );
     }
 
-    const rider = await User.findByPk(riderId, { transaction });
-    if (!rider || rider.role !== 'RIDER') {
-      throw new AppError('Rider not found', 404);
-    }
-    if (rider.status !== 'ACTIVE') {
-      throw new AppError('Rider account is not active', 409);
-    }
-
-    const profile = await RiderProfile.findOne({
-      where: { userId: riderId },
-      lock: transaction.LOCK.UPDATE,
-      transaction,
-    });
-    if (!profile) {
-      throw new AppError('Rider profile not found', 404);
-    }
-    if (profile.availability !== 'AVAILABLE') {
-      throw new AppError('You must be AVAILABLE to accept a delivery', 409);
-    }
-
-    const activeCount = await Delivery.count({
-      where: { riderId, status: { [Op.in]: ACTIVE } },
-      transaction,
-    });
-    if (activeCount > 0) {
-      throw new AppError('You already have an active delivery', 409);
-    }
+    // Same eligibility rules as an admin assignment (role/status/availability
+    // and no other active delivery), enforced under the profile lock.
+    await assertRiderEligible(riderId, transaction);
 
     await transitionDelivery({
       deliveryId,
       toStatus: 'ASSIGNED',
-      actor: { id: riderId },
+      actor: { id: riderId, role: 'RIDER' },
       note: 'Accepted by rider',
       patch: { riderId },
       transaction,
@@ -202,7 +178,7 @@ async function riderUpdateStatus(riderId, deliveryId, status, note) {
   await transitionDelivery({
     deliveryId,
     toStatus: status,
-    actor: { id: riderId },
+    actor: { id: riderId, role: 'RIDER' },
     note: note || `Marked ${status} by rider`,
     expectedRiderId: riderId,
   });
