@@ -1,0 +1,35 @@
+'use strict';
+
+const ROLES = ['CUSTOMER', 'RIDER', 'ADMIN'];
+const USER_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
+
+const AVAILABILITIES = ['AVAILABLE', 'BUSY', 'OFFLINE'];
+// Riders may only manually pick from these two; BUSY is system-managed.
+const RIDER_SELECTABLE_AVAILABILITIES = ['AVAILABLE', 'OFFLINE'];
+
+const DELIVERY_STATUSES = [
+  'PENDING',
+  'CONFIRMED',
+  'ASSIGNED',
+  'PICKED_UP',
+  'IN_TRANSIT',
+  'DELIVERED',
+  'CANCELLED',
+];
+
+// A delivery in any of these states is "active" and occupies the rider.
+const ACTIVE_DELIVERY_STATUSES = ['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT'];
+
+const PAYMENT_METHODS = ['CASH', 'CARD', 'TRANSFER'];
+const PAYMENT_STATUSES = ['PENDING', 'SUCCESSFUL', 'FAILED', 'REFUNDED'];
+
+module.exports = {
+  ROLES,
+  USER_STATUSES,
+  AVAILABILITIES,
+  RIDER_SELECTABLE_AVAILABILITIES,
+  DELIVERY_STATUSES,
+  ACTIVE_DELIVERY_STATUSES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+};
