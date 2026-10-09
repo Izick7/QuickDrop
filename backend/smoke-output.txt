@@ -1,0 +1,52 @@
+Smoke testing http://localhost:5000
+
+PASS  seeded customers can log in
+PASS  registered 7 fresh riders
+PASS  invariants hold: baseline
+PASS  create delivery -> 201 PENDING with computed price
+PASS  create with client-supplied price -> 400 (.strict)
+PASS  create with empty required field -> 400
+PASS  create with negative weight -> 400
+PASS  list deliveries -> 200 with pagination
+PASS  get own delivery -> 200
+PASS  get another customer's delivery -> 404
+PASS  get with malformed id -> 400
+PASS  patch pending delivery recomputes price
+PASS  patch with client-supplied price -> 400
+PASS  rider cannot create a delivery -> 403
+PASS  customer cannot access rider routes -> 403
+PASS  CARD payment -> 201 SUCCESSFUL with reference
+PASS  payment auto-confirms the delivery
+PASS  second payment after success -> 409
+PASS  list own payments -> 200
+PASS  CASH payment -> 201 PENDING, delivery confirmed
+PASS  rider accepts confirmed delivery -> ASSIGNED
+PASS  rider becomes BUSY after accept
+PASS  rider cannot change availability while active -> 409
+PASS  rider cannot set CANCELLED -> 400
+PASS  rider PICKED_UP -> 200
+PASS  skipping IN_TRANSIT -> 409
+PASS  rider IN_TRANSIT -> 200
+PASS  rider DELIVERED -> 200
+PASS  CASH payment settled on delivery
+PASS  rider freed after delivery -> AVAILABLE
+PASS  pay a cancelled delivery -> 409
+PASS  pay a delivered delivery -> 409
+PASS  rider cannot accept a PENDING delivery -> 409
+PASS  rider cannot advance another rider's delivery -> 404
+PASS  available list -> 200 and hides customer PII
+PASS  rider cannot set BUSY manually -> 400
+PASS  rider can set AVAILABLE -> 200
+PASS  cancel assigned delivery frees rider and clears riderId
+PASS  successful payment refunded on cancel
+PASS  concurrency: two riders accept -> exactly one wins
+PASS  concurrency: two payments -> exactly one success
+PASS  concurrency: one successful payment row
+PASS  concurrency: admin assign locks out accept/duplicate
+PASS  concurrency: losing riders stay AVAILABLE
+PASS  concurrency: 10x cancel/accept race stays consistent
+PASS  invariants hold: final
+PASS  status history matches current status for every tracked delivery
+PASS  no response ever contains passwordHash
+
+48 passed, 0 failed

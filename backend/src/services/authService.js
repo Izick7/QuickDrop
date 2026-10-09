@@ -2,7 +2,11 @@
 
 const { sequelize, User, RiderProfile } = require('../config/database');
 const AppError = require('../utils/AppError');
-const { hashPassword, comparePassword } = require('../utils/password');
+const {
+  hashPassword,
+  comparePassword,
+  DUMMY_PASSWORD_HASH,
+} = require('../utils/password');
 const { signToken } = require('../utils/jwt');
 const { toPublicUser, getMe } = require('./userService');
 
@@ -53,12 +57,15 @@ async function register(data) {
 
 async function login({ email, password }) {
   const user = await User.scope('withPassword').findOne({ where: { email } });
-  if (!user) {
-    throw new AppError(GENERIC_LOGIN_ERROR, 401);
-  }
 
-  const passwordOk = await comparePassword(password, user.passwordHash);
-  if (!passwordOk) {
+  // Always run a bcrypt comparison, even when the account is missing, so the
+  // response time does not reveal whether the email is registered.
+  const passwordOk = await comparePassword(
+    password,
+    user ? user.passwordHash : DUMMY_PASSWORD_HASH
+  );
+
+  if (!user || !passwordOk) {
     throw new AppError(GENERIC_LOGIN_ERROR, 401);
   }
 
