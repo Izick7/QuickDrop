@@ -1,0 +1,14 @@
+import { request } from './client';
+export const adminDashboard = () => request('/admin/dashboard');
+export const adminUsers = (query) => request('/admin/users', { query });
+export const adminCreateUser = (body) => request('/admin/users', { method: 'POST', body });
+export const adminUpdateUser = (id, body) => request(`/admin/users/${id}`, { method: 'PATCH', body });
+export const adminRiders = (query) => request('/admin/riders', { query });
+export const adminDeliveries = (query) => request('/admin/deliveries', { query });
+export const adminDelivery = (id) => request(`/admin/deliveries/${id}`);
+export const adminConfirm = (id) => request(`/admin/deliveries/${id}/confirm`, { method: 'POST', body: {} });
+export const adminAssign = (id, riderId) => request(`/admin/deliveries/${id}/assign`, { method: 'POST', body: { riderId } });
+export const adminReassign = (id, riderId) => request(`/admin/deliveries/${id}/reassign`, { method: 'POST', body: { riderId } });
+export const adminCancel = (id, reason) => request(`/admin/deliveries/${id}/cancel`, { method: 'POST', body: { reason } });
+export const adminPayments = (query) => request('/admin/payments', { query });
+export const adminPaymentStatus = (id, status) => request(`/admin/payments/${id}/status`, { method: 'PATCH', body: { status } });

@@ -1,0 +1,14 @@
+import { Activity, ArrowLeft, Box, CreditCard, LayoutDashboard, LogOut, MapPin, Menu, Settings2, Shield, Users, X, Bike } from 'lucide-react';
+import { useState } from 'react';
+import { Link, NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+const items = {
+  CUSTOMER: [{ to: '/app', label: 'Overview', icon: LayoutDashboard }, { to: '/app/deliveries', label: 'My deliveries', icon: Box }, { to: '/app/payments', label: 'Payments', icon: CreditCard }, { to: '/app/profile', label: 'Profile', icon: Settings2 }],
+  RIDER: [{ to: '/app', label: 'Overview', icon: LayoutDashboard }, { to: '/app/deliveries', label: 'My deliveries', icon: Box }, { to: '/app/available', label: 'Available jobs', icon: MapPin }, { to: '/app/profile', label: 'Profile', icon: Settings2 }],
+  ADMIN: [{ to: '/app', label: 'Overview', icon: LayoutDashboard }, { to: '/app/deliveries', label: 'Deliveries', icon: Box }, { to: '/app/users', label: 'Users', icon: Users }, { to: '/app/riders', label: 'Riders', icon: Bike }, { to: '/app/payments', label: 'Payments', icon: CreditCard }],
+};
+export default function AppLayout() {
+  const { user, logout } = useAuth(); const [open, setOpen] = useState(false);
+  const nav = items[user?.role] || [];
+  return <div className="app-shell"><aside className={`sidebar ${open ? 'sidebar-open' : ''}`}><Link to="/" className="brand"><span className="brand-icon"><Box size={20}/></span><span>quickdrop<small>DELIVERY, MADE CLEAR</small></span></Link><div className="side-label">WORKSPACE</div><nav>{nav.map(({to,label,icon:Icon})=><NavLink end={to==='/app'} onClick={()=>setOpen(false)} key={to} to={to} className={({isActive})=>`side-link ${isActive?'active':''}`}><Icon size={18}/>{label}</NavLink>)}</nav><div className="sidebar-bottom"><div className="secure-note"><Shield size={16}/><span>Your deliveries are<br/>protected by QuickDrop.</span></div><button onClick={logout} className="side-link logout"><LogOut size={18}/>Sign out</button></div></aside>{open&&<button aria-label="Close menu" className="scrim" onClick={()=>setOpen(false)}><X/></button>}<section className="main-column"><header className="topbar"><button className="mobile-menu" aria-label="Open menu" onClick={()=>setOpen(!open)}><Menu/></button><div className="breadcrumbs"><Link to="/">Home</Link><span>·</span><b>{user?.role ? `${user.role[0]}${user.role.slice(1).toLowerCase()} workspace` : 'Workspace'}</b></div><div className="top-user"><span className="online-dot"/>Online <span className="avatar">{user?.fullName?.slice(0,1) || 'Q'}</span><span className="user-name">{user?.fullName}</span></div></header><main className="content"><Outlet/></main><footer className="app-footer"><span>© {new Date().getFullYear()} QuickDrop</span><span>Every delivery, clearly handled.</span><Link to="/"><ArrowLeft size={14}/> Home</Link></footer></section></div>;
+}
