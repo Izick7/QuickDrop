@@ -12,7 +12,24 @@ const db = {};
 
 let sequelize;
 if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
+  let connectionString = process.env[config.use_env_variable];
+
+  if (env === 'production' && connectionString) {
+    const url = new URL(connectionString);
+
+    for (const key of [
+      'sslmode',
+      'sslrootcert',
+      'sslcert',
+      'sslkey',
+    ]) {
+      url.searchParams.delete(key);
+    }
+
+    connectionString = url.toString();
+  }
+
+  sequelize = new Sequelize(connectionString, config);
 } else {
   sequelize = new Sequelize(
     config.database,
